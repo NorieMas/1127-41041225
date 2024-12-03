@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>成績輸入系統</title>
+    <!-- 引入 Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+        input[type="text"], input[type="number"], input[type="submit"] {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .message {
+            color: green;
+            text-align: center;
+            margin-top: 10px;
+        }
+        #scoreList {
+            margin-top: 20px;
+        }
+        #scoreList ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        #scoreList li {
+            padding: 8px;
+            margin-bottom: 5px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+        #loginSection {
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="loginSection">
+        <h1>Google 登入與註冊</h1>
+
+        <button id="loginBtn">使用 Google 登入</button>
+        <button id="registerBtn">使用 Google 註冊</button>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <div class="container" id="scoreSection" style="display: none;">
+        <h1>成績輸入系統</h1>
+        <form id="scoreForm">
+            <div class="form-group">
+                <label for="studentName">學生姓名</label>
+                <input type="text" id="studentName" placeholder="輸入學生姓名" required>
+            </div>
+            <div class="form-group">
+                <label for="studentScore">學生成績</label>
+                <input type="number" id="studentScore" placeholder="輸入學生成績" required min="0" max="100">
+            </div>
+            <input type="submit" value="提交成績">
+        </form>
+
+        <div id="scoreList">
+            <h2>已提交成績</h2>
+            <ul id="scoreItems"></ul>
+        </div>
+
+        <div id="logoutBtnContainer" style="text-align: center; margin-top: 20px;">
+            <button id="logoutBtn">登出</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import Firebase SDK 模組
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+        import { getDatabase, ref, push, set, onValue, remove, update } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
+        // Firebase 配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyDdLQpES2P4NfhxzzoOPkAE80hJ5bGWnDE",
+            authDomain: "web1113-41041225.firebaseapp.com",
+            projectId: "web1113-41041225",
+            storageBucket: "web1113-41041225.appspot.com",
+            messagingSenderId: "72233532454",
+            appId: "1:72233532454:web:5c66a7424f8b83b7ca7ae7",
+            databaseURL: "https://web1113-41041225-default-rtdb.asia-southeast1.firebasedatabase.app/"
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
+        const database = getDatabase(app);
+
+        let editingKey = null; // 用來記錄正在編輯的成績的 key
+
+        // 監聽用戶登入狀態
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('loginSection').style.display = 'none';
+                document.getElementById('scoreSection').style.display = 'block';
+                document.getElementById('message').textContent = '歡迎，' + user.displayName + '！';
+            } else {
+                document.getElementById('loginSection').style.display = 'block';
+                document.getElementById('scoreSection').style.display = 'none';
+            }
+        });
+
+        // 註冊按鈕：只上傳資料
+        document.getElementById('registerBtn').addEventListener('click', () => {
+            signInWithPopup(auth, provider)
+                .then((result) => {
+                    const user = result.user;
+                    document.getElementById('message').textContent = '資料已成功上傳！';
+                })
+                .catch((error) => {
+                    const errorMessage = error.message;
+                    console.error("註冊錯誤: ", errorMessage);
+                    document.getElementById('message').textContent = "註冊失敗：" + errorMessage;
+                });
+        });
+
+        // 登入按鈕：顯示成績輸入功能
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            signInWithPopup(auth, provider)
+                .then((result) => {
+                    const user = result.user;
+                    document.getElementById('message').textContent = '登入成功！';
+                })
+                .catch((error) => {
+                    const errorMessage = error.message;
+                    console.error("登入錯誤: ", errorMessage);
+                    document.getElementById('message').textContent = "登入失敗：" + errorMessage;
+                });
+        });
+
+        // 表單提交事件：提交成績
+        document.getElementById('scoreForm').addEventListener('submit', function(event) {
+            event.preventDefault(); // 防止表單重新載入頁面
+
+            const studentName = document.getElementById('studentName').value;
+            const studentScore = document.getElementById('studentScore').value;
+
+            // 檢查表單是否有空欄位
+            if (!studentName || !studentScore) {
+                document.getElementById('message').textContent = "請填寫所有欄位。";
+                return;
+            }
+
+            if (editingKey) {
+                // 更新 Firebase 中的資料
+                const scoreRef = ref(database, 'scores/' + editingKey);
+                update(scoreRef, {
+                    name: studentName,
+                    score: studentScore
+                }).then(() => {
+                    document.getElementById('message').textContent = "成績已成功更新！";
+                    document.getElementById('scoreForm').reset();
+                    editingKey = null; // 重設編輯狀態
+                }).catch((error) => {
+                    console.error("Error updating score: ", error);
+                    document.getElementById('message').textContent = "更新失敗，請稍後再試。";
+                });
+            } else {
+                // 取得 Firebase 實例並將資料寫入 Realtime Database
+                const scoreRef = ref(database, 'scores');
+                const newScoreRef = push(scoreRef);
+                set(newScoreRef, {
+                    name: studentName,
+                    score: studentScore
+                }).then(() => {
+                    document.getElementById('message').textContent = "成績已成功提交！";
+                    document.getElementById('scoreForm').reset(); // 重設表單
+                }).catch((error) => {
+                    document.getElementById('message').textContent = "提交失敗，請稍後再試。";
+                    console.error("Error writing to Firebase: ", error);
+                });
+            }
+        });
+
+        // 實時監聽 Firebase 中 scores 節點的變動
+        const scoreListRef = ref(database, 'scores');
+        onValue(scoreListRef, (snapshot) => {
+            const scores = snapshot.val();
+            const scoreItemsContainer = document.getElementById('scoreItems');
+
+            // 清空現有的顯示資料
+            scoreItemsContainer.innerHTML = '';
+
+            // 如果有成績資料，則顯示出來
+            if (scores) {
+                Object.keys(scores).forEach(key => {
+                    const score = scores[key];
+                    const listItem = document.createElement('li');
+                    listItem.innerHTML = `
+                        ${score.name}: ${score.score} 分
+                        <button onclick="window.editScore('${key}', '${score.name}', ${score.score})">編輯</button>
+                        <button onclick="window.deleteScore('${key}')">刪除</button>
+                    `;
+                    scoreItemsContainer.appendChild(listItem);
+                });
+            }
+        });
+
+        // 編輯成績
+        window.editScore = function(key, name, score) {
+            document.getElementById('studentName').value = name;
+            document.getElementById('studentScore').value = score;
+            editingKey = key; // 設定編輯狀態
+        }
+
+        // 刪除成績
+        window.deleteScore = function(key) {
+            const scoreRef = ref(database, 'scores/' + key);
+            remove(scoreRef).then(() => {
+                document.getElementById('message').textContent = "成績已成功刪除！";
+            }).catch((error) => {
+                console.error("Error deleting score: ", error);
+                document.getElementById('message').textContent = "刪除失敗，請稍後再試。";
+            });
+        }
+
+        // 登出功能
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            signOut(auth).then(() => {
+                document.getElementById('message').textContent = '已登出';
+                document.getElementById('loginSection').style.display = 'block';
+                document.getElementById('scoreSection').style.display = 'none';
+            }).catch((error) => {
+                console.error("登出錯誤:", error);
+            });
+        });
+
+    </script>
+
+</body>
+</html>
